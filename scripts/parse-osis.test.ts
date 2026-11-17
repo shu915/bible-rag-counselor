@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { parseOsis } from "./parse-osis";
 
-// この中のテストは、自作の小さな XML だけを使う(CI でも動く)。
-// 実際の口語訳 XML を使うテストは、parse-osis.local.test.ts(手元だけ)にある
+// この中のテストは、自作の小さな XML だけを使う(XML の取得が要らない)。
+// 実際の口語訳 XML を使うテストは、parse-osis.real-data.test.ts にある
 
 // テスト用の小さな XML。書名の宣言(div type="book")と章(chapter)を付ける
 const wrap = (body: string) =>

@@ -3,15 +3,16 @@ import * as path from "path";
 import { describe, expect, it } from "vitest";
 import { parseOsis } from "./parse-osis";
 
-// 実際の口語訳 XML を使うテスト。**手元だけで動かす**(CI では `npm run test:ci` が除外する)。
+// 実際の口語訳 XML を使うテスト。
 // XML は、再配布してよいか分からないので、リポジトリに入れていない(.gitignore)。
+// `npm run bible:fetch` で配布元から取得する(CI も、テストの前に同じコマンドを実行する)。
 const xmlPath = path.join(__dirname, "..", "data", "jpn-kougo.osis.xml");
 
-describe("parseOsis(実際の口語訳 XML。手元だけ)", () => {
+describe("parseOsis(実際の口語訳 XML)", () => {
   // XML が無いときは、黙って飛ばさず、はっきり失敗させる(検証した気にならないように)
   if (!fs.existsSync(xmlPath)) {
     throw new Error(
-      `${xmlPath} がありません。出典の XML を、手元に置いてから実行してください(リポジトリには入れていません)`,
+      `${xmlPath} がありません。\`npm run bible:fetch\` で配布元から取得してから実行してください`,
     );
   }
   const xml = fs.readFileSync(xmlPath, "utf-8");

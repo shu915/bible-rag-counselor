@@ -18,7 +18,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     # 実 DB(pgvector)を使うテストを書いたら、ここに services: postgres を足す。
-    # 今のテストは DB を使わない(自作の小さな XML で、変換の処理だけを確かめる)
+    # 今のテストは DB を使わない(聖書の XML の変換と、チェックサムの検証だけ)
     steps:
       - uses: actions/checkout@v7
         with:
@@ -31,8 +31,10 @@ jobs:
       - run: npm ci
       - run: npm run lint
       - run: npm run format:check
-      # 実際の口語訳 XML を使うテスト(*.local.test.ts)は、XML をリポジトリに入れていないので、手元だけで動かす
-      - run: npm run test:ci
+      # 出典の XML は、リポジトリに入れていない(再配布してよいか分からないため)。
+      # 配布元から取得する。コミットを固定し、チェックサムを確かめるので、内容が変わっていれば失敗する
+      - run: npm run bible:fetch
+      - run: npm test
       - run: npx next typegen
       - run: npm run typecheck
       - run: npm run build

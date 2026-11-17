@@ -44,5 +44,5 @@ next-env.d.ts
 # generated from data/jpn-kougo.osis.xml (npm run bible:convert)
 /data/bible-paragraphs.json
 
-# 出典の XML。再配布してよいか分からないので、リポジトリには入れない(手元に置く)
+# 出典の XML。再配布してよいか分からないので、リポジトリには入れない(npm run bible:fetch で取得する)
 /data/jpn-kougo.osis.xml

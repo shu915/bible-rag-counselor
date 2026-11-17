@@ -16,7 +16,7 @@
     "test": "vitest run",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "test:ci": "vitest run --exclude \"**/*.local.test.ts\""
+    "bible:fetch": "tsx scripts/fetch-osis.ts"
   },
   "dependencies": {
     "drizzle-orm": "^0.45.4",
