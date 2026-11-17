@@ -1,0 +1,18 @@
+# 生成物・出典データ・依存
+node_modules
+.next
+out
+coverage
+data
+drizzle
+public
+package-lock.json
+next-env.d.ts
+
+# 日本語の文書は、自動整形で表や改行が崩れやすいので対象にしない
+*.md
+claude-progress.txt
+
+# 人が管理する設定(ガードが編集を止めている)と Docker の設定
+.claude
+docker
