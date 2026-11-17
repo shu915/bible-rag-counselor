@@ -32,6 +32,7 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+!.env.example
 
 # vercel
 .vercel
@@ -39,3 +40,9 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# generated from data/jpn-kougo.osis.xml (npm run bible:convert)
+/data/bible-paragraphs.json
+
+# 出典の XML。再配布してよいか分からないので、リポジトリには入れない(手元に置く)
+/data/jpn-kougo.osis.xml
