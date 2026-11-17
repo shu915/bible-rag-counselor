@@ -1,7 +1,8 @@
-import * as fs from "fs";
-import * as path from "path";
 import { describe, expect, it } from "vitest";
 import { parseOsis } from "./parse-osis";
+
+// この中のテストは、自作の小さな XML だけを使う(XML の取得が要らない)。
+// 実際の口語訳 XML を使うテストは、parse-osis.real-data.test.ts にある
 
 // テスト用の小さな XML。書名の宣言(div type="book")と章(chapter)を付ける
 const wrap = (body: string) =>
@@ -68,6 +69,11 @@ describe("parseOsis(小さな XML)", () => {
     expect(paragraphs[0].id).toBe("Matt.6.2");
   });
 
+  it("書名の宣言が無ければ、書の key をそのまま書名にする", () => {
+    const xml = `<chapter osisID="Gen.1"><p><verse osisID="Gen.1.1">本文</verse></p></chapter>`;
+    expect(parseOsis(xml).paragraphs[0]).toMatchObject({ book_key: "Gen", book_name: "Gen" });
+  });
+
   it("章をまたぐ節は、気づけるようにエラーにする", () => {
     const xml = wrap(`<p><verse osisID="Matt.6.34 Matt.7.1">本文</verse></p>`);
     expect(() => parseOsis(xml)).toThrow("章をまたぐ");
@@ -76,74 +82,5 @@ describe("parseOsis(小さな XML)", () => {
   it("節番号が連続していなければ、エラーにする", () => {
     const xml = wrap(`<p><verse osisID="Matt.6.9 Matt.6.11">本文</verse></p>`);
     expect(() => parseOsis(xml)).toThrow("連続していません");
-  });
-});
-
-describe("parseOsis(実際の口語訳 XML)", () => {
-  // data/jpn-kougo.osis.xml はリポジトリに入っているので、CI でも読める
-  const xml = fs.readFileSync(path.join(__dirname, "..", "data", "jpn-kougo.osis.xml"), "utf-8");
-  const { paragraphs, verseCount } = parseOsis(xml);
-  const allVerses = paragraphs.flatMap((p) => p.verses);
-
-  it("節と段落の件数が変わっていない(取りこぼしの検知)", () => {
-    expect(verseCount).toBe(31088);
-    expect(paragraphs).toHaveLength(5709);
-    expect(allVerses).toHaveLength(31088);
-  });
-
-  it("66巻そろっている", () => {
-    expect(new Set(paragraphs.map((p) => p.book_key)).size).toBe(66);
-  });
-
-  it("段落の id は一意", () => {
-    expect(new Set(paragraphs.map((p) => p.id)).size).toBe(paragraphs.length);
-  });
-
-  it("本文にタグや記号が残っていない", () => {
-    expect(allVerses.filter((v) => /[<>&]/.test(v.text))).toEqual([]);
-  });
-
-  it("節番号は、段落の中で飛ばずに並ぶ(既知の例外を除く)", () => {
-    // 出エジプト記22章は、口語訳の節の並びが標準と違うため、2つの段落に分かれる
-    const knownExceptions = new Set(["Exod.22.1-4"]);
-    const broken = paragraphs
-      .filter((p) => !knownExceptions.has(p.id))
-      .filter((p) => {
-        let expected = p.verse_start;
-        for (const v of p.verses) {
-          if (v.verse !== expected) return true;
-          expected = v.verse_end + 1;
-        }
-        return expected - 1 !== p.verse_end;
-      })
-      .map((p) => p.id);
-
-    expect(broken).toEqual([]);
-  });
-
-  it("2節まとめの節は 16 件で、Rom.1.8-17 に 9-10 節がある", () => {
-    expect(allVerses.filter((v) => v.verse !== v.verse_end)).toHaveLength(16);
-    const rom = paragraphs.find((p) => p.id === "Rom.1.8-17");
-    expect(
-      rom?.verses.map((v) =>
-        v.verse === v.verse_end ? `${v.verse}` : `${v.verse}-${v.verse_end}`,
-      ),
-    ).toEqual(["8", "9-10", "11", "12", "13", "14", "15", "16", "17"]);
-  });
-
-  it("既知の例外: 出エジプト記22章は2つの段落に分かれる", () => {
-    const ids = paragraphs
-      .filter((p) => p.book_key === "Exod" && p.chapter === 22)
-      .map((p) => p.id);
-    expect(ids).toContain("Exod.22.1-4");
-    expect(ids).toContain("Exod.22.2-3");
-  });
-
-  it("マタイ6章25-34節は1つの段落で、34節の本文が正しい", () => {
-    const paragraph = paragraphs.find((p) => p.id === "Matt.6.25-34");
-    expect(paragraph?.verses).toHaveLength(10);
-    expect(paragraph?.verses.at(-1)?.text).toBe(
-      "だから、あすのことを思いわずらうな。あすのことは、あす自身が思いわずらうであろう。一日の苦労は、その日一日だけで十分である。",
-    );
   });
 });

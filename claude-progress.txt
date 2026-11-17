@@ -3,10 +3,12 @@ claude-progress.txt
 新しいセッションは、最初にこのファイルと CLAUDE.md を読む。作業の区切りごとに更新する。経緯は git の履歴、要件と規則は CLAUDE.md。
 
 ## いまの状態
-- ブランチ `feature/setup-environment`(main から作業中。まだ何もコミットしていない)。リモートは `origin`(github.com/shu915/bible-rag-counselor)。main に最初のコミットだけ push 済み
-- 入っているもの(未コミット): Next.js + TypeScript + Tailwind の土台 / `CLAUDE.md`(要件・規則・費用の試算)/ `scripts/convert-osis.ts`(口語訳 XML → 段落 JSON)/ `data/jpn-kougo.osis.xml` / `.claude/`(hooks・evaluator)
-- 検証済み: `npm run bible:convert` で 5,709段落 / 31,088節を生成。節の取りこぼしなし、タグの残りなし。`tsc` が通る
-- まだ動くアプリはない(画面は create-next-app の初期状態のまま)。テストはまだ無い
+- ブランチ `feature/setup-environment`、PR #1(main へ)。リモートは `origin`(github.com/shu915/bible-rag-counselor)。main には、最初のコミットだけが入っている
+- main には Ruleset `protect-main` がある(PR 必須、CI の `check` が必須、強制プッシュ禁止)
+- 入っているもの: Next.js + TypeScript + Tailwind の土台 / `CLAUDE.md`(要件・規則・費用の試算)/ `scripts/`(口語訳 XML → 段落 JSON の変換とテスト)/ Docker と Drizzle / `.claude/`(hooks・evaluator)/ CI・Dependabot・Prettier
+- **出典の XML(`data/jpn-kougo.osis.xml`)は git に入れない**(`.gitignore`)。出典は https://github.com/seven1m/open-bibles(配布元の一覧では Public Domain。個別の根拠は未確認)。再配布してよいか分からないため、`npm run bible:fetch` で配布元から取得する(コミットを固定し、SHA-256 を確かめる。CI も同じ)。最初に push したコミットに入ってしまったので、コミットを作り直して、強制プッシュで履歴から外す(**人が実行する**。下の「宿題」)
+- 検証済み: `npm run bible:convert` で 5,709段落 / 31,088節を生成。節の取りこぼしなし、タグの残りなし。GitHub 上の CI(PR #1)が全ステップ成功した(XML を入れていた時点)
+- まだ動くアプリはない(画面は create-next-app の初期状態のまま)
 
 ## 完了
 - プロジェクトの作成、git の初期化、GitHub への接続
@@ -28,7 +30,7 @@ claude-progress.txt
 7. 回数制限(IP 単位1日5回 + 全体の1日の上限。設計は CLAUDE.md の「回数制限」)
 8. Neon + Vercel にデプロイ。OpenRouter の月の上限を設定する
 
-- CI(`.github/workflows/ci.yml`)、Dependabot(月1回・まとめて・メジャーと Next/React/Vitest は手動)、Vitest、Prettier の導入。変換スクリプトを `parse-osis.ts`(純粋な関数)と `convert-osis.ts`(読み書き)に分けて、15件のテストを書いた(実装を壊すと失敗することを確認済み)。`@types/node` を 22 に上げた。CI と同じ6ステップが手元で全部通る。**まだ GitHub では動かしていない**(push して初めて動く)
+- CI(`.github/workflows/ci.yml`)、Dependabot(月1回・まとめて・メジャーと Next/React/Vitest は手動)、Vitest、Prettier の導入。変換スクリプトを `parse-osis.ts`(純粋な関数)と `convert-osis.ts`(読み書き)に分けて、テストを書いた(実装を壊すと失敗することを確認済み)。小さな XML のテスト(`parse-osis.test.ts`)と、実際の XML を使うテスト(`parse-osis.real-data.test.ts`。XML が無いときは失敗する)に分けた。XML は `npm run bible:fetch` で配布元から取得する(`scripts/fetch-osis.ts`。コミット `3ca49fb` を固定し、SHA-256 を確かめる。チェックサムの検証にもテストがある)。CI は、テストの前に `bible:fetch` を実行して、全部のテストを動かす。`@types/node` を 22 に上げた
 
 - 外部レビュー(2回目)への対応: drizzle.config.ts(不正な URL でパスワードを出さない、ENOENT のときだけ `.env.local` の欠如を無視)、ci.yml(`persist-credentials: false`)、dependabot(next / react は major と minor だけ無視、patch は通知)、evaluator に「検証の仕組みを弱める変更」の確認を追加
 
@@ -53,5 +55,6 @@ claude-progress.txt
 
 ## 運用の注意
 - 環境変数(`OPENROUTER_API_KEY` など)は `.env.local` に置く。`.env*` は読まない・編集しない
-- `data/bible-paragraphs.json` は生成物(`.gitignore` 対象)。元は `data/jpn-kougo.osis.xml`。どちらも直接編集しない(hooks がブロックする)
+- `data/bible-paragraphs.json` は生成物、`data/jpn-kougo.osis.xml` は出典。どちらも `.gitignore` 対象で、直接編集しない(hooks がブロックする)。新しく clone したら、XML を手元に置いてから `npm run bible:convert` を実行する
+- **宿題**: 口語訳の個別のライセンス(日本聖書協会などの権利の扱い)は、配布元の一覧(Public Domain)以上には確認できていない。公開リポジトリに全文を置かない方針は、確認できるまで維持する。配布元を更新するときは、`scripts/fetch-osis.ts` の `SOURCE_COMMIT` と `EXPECTED_SHA256` を、人が確かめて書き換える
 - 出エジプト記22章は口語訳の節順が標準と違い、`Exod.22.1-4` と `Exod.22.2-3` の2段落に分かれる(既知の例外)
