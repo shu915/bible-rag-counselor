@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+# 同じ PR に続けて push したら、古い実行は止める
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # 実 DB(pgvector)を使うテストを書いたら、ここに services: postgres を足す。
+    # 今のテストは DB を使わない(自作の小さな XML で、変換の処理だけを確かめる)
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # GITHUB_TOKEN を .git に残さない(後続の npm ci のスクリプトから読まれないように)
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run format:check
+      # 実際の口語訳 XML を使うテスト(*.local.test.ts)は、XML をリポジトリに入れていないので、手元だけで動かす
+      - run: npm run test:ci
+      - run: npx next typegen
+      - run: npm run typecheck
+      - run: npm run build
