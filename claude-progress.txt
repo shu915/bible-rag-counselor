@@ -1,0 +1,57 @@
+claude-progress.txt
+最終更新: 2026-11-17
+新しいセッションは、最初にこのファイルと CLAUDE.md を読む。作業の区切りごとに更新する。経緯は git の履歴、要件と規則は CLAUDE.md。
+
+## いまの状態
+- ブランチ `feature/setup-environment`(main から作業中。まだ何もコミットしていない)。リモートは `origin`(github.com/shu915/bible-rag-counselor)。main に最初のコミットだけ push 済み
+- 入っているもの(未コミット): Next.js + TypeScript + Tailwind の土台 / `CLAUDE.md`(要件・規則・費用の試算)/ `scripts/convert-osis.ts`(口語訳 XML → 段落 JSON)/ `data/jpn-kougo.osis.xml` / `.claude/`(hooks・evaluator)
+- 検証済み: `npm run bible:convert` で 5,709段落 / 31,088節を生成。節の取りこぼしなし、タグの残りなし。`tsc` が通る
+- まだ動くアプリはない(画面は create-next-app の初期状態のまま)。テストはまだ無い
+
+## 完了
+- プロジェクトの作成、git の初期化、GitHub への接続
+- 要件の整理(CLAUDE.md): 悩みを入力 → 類似の聖書の箇所を3件 → 各引用に解説 → 結論。入力と返答は保存しない
+- 聖書データの変換とフォーマットの確定(検索の単位は段落。`id` は `Matt.6.25-34` の形)
+- 費用の試算(エンベディングは約6円、相談1回は約2〜4.5円)
+- ハーネス(hooks・evaluator・progress)を habit-and-health-tracker から移植して、このプロジェクト用に調整
+- ローカルの DB(Docker compose。`docker-compose.yml`、`docker/initdb/`、`.env.example`)
+- Drizzle(`drizzle.config.ts`)と zod の導入
+- 外部レビュー(1回目)への対応: ガードの強化(引用符・ワイルドカード・`..`・Bash 経由の書き換え・危険な git/docker コマンド)、drizzle の接続先の明示、変換スクリプトをどこから実行しても動くように、ページの言語とタイトルを日本語に。ロックファイルは調査して問題なし(102追加・ダウングレード0・削除0)
+
+## 次
+1. (完了 2026-11-17)Docker の Postgres 17 + pgvector。ポート 5434、DB 名 `bible_rag`。`vector` 0.8.7 が有効なことを確認済み
+2. テーブルを作る(列は CLAUDE.md の「DB 投入」の案)。Drizzle は導入済み(`drizzle.config.ts`、`db:generate` / `db:migrate` / `db:studio`)。`src/db/schema.ts` がまだ無い
+3. 分かち書きの関数を作る(kuromoji 系。文書側と検索側で共通)
+4. DB 投入スクリプト(分かち書き + エンベディング + INSERT。再開できる形)
+5. 検索(ベクトル + 全文のハイブリッド、RRF で統合)
+6. 生成(OpenRouter、`google/gemini-4-hydrogen`)と画面
+7. 回数制限(IP 単位1日5回 + 全体の1日の上限。設計は CLAUDE.md の「回数制限」)
+8. Neon + Vercel にデプロイ。OpenRouter の月の上限を設定する
+
+- CI(`.github/workflows/ci.yml`)、Dependabot(月1回・まとめて・メジャーと Next/React/Vitest は手動)、Vitest、Prettier の導入。変換スクリプトを `parse-osis.ts`(純粋な関数)と `convert-osis.ts`(読み書き)に分けて、15件のテストを書いた(実装を壊すと失敗することを確認済み)。`@types/node` を 22 に上げた。CI と同じ6ステップが手元で全部通る。**まだ GitHub では動かしていない**(push して初めて動く)
+
+- 外部レビュー(2回目)への対応: drizzle.config.ts(不正な URL でパスワードを出さない、ENOENT のときだけ `.env.local` の欠如を無視)、ci.yml(`persist-credentials: false`)、dependabot(next / react は major と minor だけ無視、patch は通知)、evaluator に「検証の仕組みを弱める変更」の確認を追加
+
+- GitHub の Ruleset `protect-main`(id 27444241)を作成: main の削除禁止、強制プッシュ禁止、PR 必須(承認0人、未解決コメントがあるとマージ不可)、CI の `check` ジョブの成功が必須、例外なし。habit-and-health-tracker と同じ設定であることを、読み戻して確認した。**まだ CI は一度も動いていない**ので、最初の PR で `check` が動いて初めて、必須チェックとして働く
+
+- habit-and-health-tracker(hht)にも、ガードの修正版・`permissions.deny`・`drizzle.config.ts` の修正(未設定で止まる、接続先の表示、パスワードを出さない)・evaluator・CLAUDE.md・docs を反映した。hht の `chore/harden-guard` ブランチ、未コミット。ガードの94件テストと、drizzle-kit 本体での確認、lint・型チェック・テストは通った(DB を使う301件はスキップ)
+
+## ガードの小さな宿題(次にガードを更新するとき)
+- `jq '.[] | ...'` の `.[` が、ワイルドカードの判定(空白の後ろの `.[`)に誤検知される。空白の後ろの判定は `.*` と `.?` だけにして、`.[` を外す
+
+## レビューの宿題
+- **人が反映する(2回目)**: ガードの修正版(`guard-pre.sh`)。`cat<.env.local` などの回避、`cp` / `ln` / `node -e` による保護対象の書き換え、`git restore` / `stash` / `checkout <rev> --` / `push +ref` / `--delete`、`find -exec rm` のブロックと、ワイルドカード判定の誤検知の解消。97件のテストが通ることを確認済み。ガード自身は Claude が編集できないため
+- **人がやる**: GitHub の設定(個人の設定ではなくリポジトリの Settings → Code security)で、Dependabot alerts と Dependabot security updates を有効にする(next / react の CVE を見逃さないため)
+- (反映済み・1回目)`settings.json` の `permissions.deny` と、1回目のガード修正(56件)
+- (対応済み)Vitest を導入した。ロックから落ちていた `@rolldown/binding-*` は、ロックを作り直して解決(手順は CLAUDE.md の「依存を足すとき」)
+- 回数制限、`data_collection: "deny"`、OpenRouter モジュールは未実装。実装できたら、同じ観点でもう一度レビューする
+
+## 未決(CLAUDE.md の「未決事項」にも書いてある)
+- 書の順序・新旧約の情報を持たせるか
+- 長すぎる段落(最大約2,700字)を分割するか。系図など検索に向かない段落を外すか
+- ベクトル化のテキストに書名・章節のプレフィックスを付けるか
+
+## 運用の注意
+- 環境変数(`OPENROUTER_API_KEY` など)は `.env.local` に置く。`.env*` は読まない・編集しない
+- `data/bible-paragraphs.json` は生成物(`.gitignore` 対象)。元は `data/jpn-kougo.osis.xml`。どちらも直接編集しない(hooks がブロックする)
+- 出エジプト記22章は口語訳の節順が標準と違い、`Exod.22.1-4` と `Exod.22.2-3` の2段落に分かれる(既知の例外)
