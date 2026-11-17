@@ -63,9 +63,9 @@
 - 長い段落でも最大約3,000トークンで、エンベディングの上限(8,191)には収まる
 
 ## データ
-- 聖書は **日本語口語訳(1954/1955年版)**。OSIS XML を `data/jpn-kougo.osis.xml` に置いている
+- 聖書は **日本語口語訳(1954/1955年版)**。OSIS XML を `data/jpn-kougo.osis.xml` に置く。**git には入れない**(`.gitignore`)。出典は https://github.com/seven1m/open-bibles の `jpn-kougo.osis.xml`(配布元の一覧では Public Domain。口語訳の個別の根拠は書かれておらず、こちらでは確認できていない)。再配布してよいかを確認できていないので、公開リポジトリには置かない。**`npm run bible:fetch` で、配布元から取得する**(コミットを固定し、SHA-256 を確かめる。すでにあって一致していれば何もしない。CI も同じコマンドを使う)。新しく clone したら、これを実行する
 - `npm run bible:convert`([scripts/convert-osis.ts](scripts/convert-osis.ts))で XML から JSON を生成する(前身プロジェクト rag-bible から移植)
-  - 出力は `data/bible-paragraphs.json` のみ(5,709段落 / 31,088節)。生成物なので `.gitignore` 対象。XML だけ git に入れる
+  - 出力は `data/bible-paragraphs.json` のみ(5,709段落 / 31,088節)。生成物なので `.gitignore` 対象。XML も `.gitignore` 対象で、どちらも git に入れない
   - **検索の単位は段落**。節は1節だけだと文脈が足りないため。引用の表示は節番号付き(例: マタイ6章25-34節)
   - 段落は `<chapter>` / `<p>` / `<lg>` を境界にして節をまとめたもの
   - フォーマット: `id`(例 `Matt.6.25-34`、1節なら `Matt.1.1`)、`book_key`、`book_name`、`chapter`、`verse_start`、`verse_end`、`verses: [{verse, verse_end, text}]`
@@ -102,6 +102,7 @@
 ## コマンド
 - `npm run dev` / `build` / `lint` / `typecheck` / `test`(Vitest)/ `format`(Prettier で整形)/ `format:check`
 - `npm run check` = lint + format:check + typecheck(**テストは含まない**)。コミット前に `npm run format` をかけると、CI の整形チェックで落ちない
+- `npm run bible:fetch`: 出典の XML を、配布元から `data/` に取得する(チェックサムを確かめる)
 - `npm run bible:convert`: XML から `data/bible-paragraphs.json` を生成する
 - DB(ローカル): `docker compose up -d --wait`(Postgres 17 + pgvector。ホストのポートは **5434**。他プロジェクトが 5432 / 5433 を使っているため)。止めるのは `docker compose down`(データは残る。消すときは `-v`)
 - スキーマ変更は Drizzle のマイグレーションで行う(`npm run db:generate -- --name <説明的な名前>` → `npm run db:migrate`。`db:studio` で中身を見られる)。DB を直接いじらない(`drizzle-kit push` は禁止)。`drizzle/` は生成物で手編集しない(`*_enable_pgvector.sql` の手書きマイグレーションだけ例外)。**マージ済みのマイグレーションは書き換えない**
@@ -111,10 +112,10 @@
 
 ## 検証と評価
 - 実装後は hooks が tsc・lint・test を自動で実行する(`build` と整形のチェックは対象外)
-- **CI(`.github/workflows/ci.yml`)**: PR と main への push で、`npm ci` → lint → format:check → test → typegen → typecheck → build を実行する。実 DB(pgvector)を使うテストを書いたら、`services: postgres` を足す
+- **CI(`.github/workflows/ci.yml`)**: PR と main への push で、`npm ci` → lint → format:check → `bible:fetch`(出典の XML を取得して、チェックサムを確かめる)→ test → typegen → typecheck → build を実行する。実 DB(pgvector)を使うテストを書いたら、`services: postgres` を足す
 - **Dependabot(`.github/dependabot.yml`)**: 月1回、minor / patch だけを1つの PR にまとめる。メジャー更新と、Next.js・React・Vitest は手動で上げる(鵜呑みにして壊さないため)
 - **依存を足すとき**: macOS の npm は、ロックから他の OS 向けのネイティブ依存(`@rolldown/binding-*` など)を落とすことがあり、CI(Linux)の `npm ci` が失敗する。`npm install` したあとに `grep -c '"node_modules/@rolldown/binding-' package-lock.json` が 0 でないか、`@rolldown/binding-linux-x64-gnu` が入っているかを確認する。落ちていたら、`package.json` だけを空のフォルダにコピーして `npm install --package-lock-only` でロックを作り直し、元のロックと比べて(ダウングレードや消えた依存がないか)から入れて `npm ci` する
-- テストは Vitest(`src/**/*.test.{ts,tsx}` と `scripts/**/*.test.ts`)。聖書の XML の変換は `scripts/parse-osis.ts`(純粋な関数)にあり、実際の XML を使ったテストで件数と整合性を守っている
+- テストは Vitest(`src/**/*.test.{ts,tsx}` と `scripts/**/*.test.ts`)。聖書の XML の変換は `scripts/parse-osis.ts`(純粋な関数)にある。自作の小さな XML のテスト(`parse-osis.test.ts`)と、実際の XML を使うテスト(`parse-osis.real-data.test.ts`。件数と整合性を守る)がある。実データのテストは、XML が無いと、黙って飛ばさず失敗する(先に `npm run bible:fetch`)。チェックサムの検証にもテストがある(`checksum.test.ts`)。CI も手元も、`npm test` で全部を実行する
 - **挙動を変えたら `evaluator` を呼ぶ**(最大5周。同じ指摘が再発したら止める)。報告には、検証していない範囲と、人間向けの確認手順を書く
 
 ## コミットと hooks

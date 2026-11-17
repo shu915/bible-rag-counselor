@@ -15,7 +15,8 @@
     "db:studio": "drizzle-kit studio",
     "test": "vitest run",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "bible:fetch": "tsx scripts/fetch-osis.ts"
   },
   "dependencies": {
     "drizzle-orm": "^0.45.4",
