@@ -1,0 +1,35 @@
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      # 通知は月に1回だけ。まとめて1つの PR にする(頻繁に来ると、鵜呑みにして壊しやすい)
+      interval: monthly
+    open-pull-requests-limit: 2
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
+    ignore:
+      # メジャー更新は破壊的変更が多いので手動で上げる
+      - dependency-name: "*"
+        update-types: [version-update:semver-major]
+      # Next.js / React は AGENTS.md の警告どおり挙動が変わりやすいので、major と minor は手動で上げる。
+      # patch は(CVE の修正が入りやすいので)月1回の通知を受け取る
+      - dependency-name: next
+        update-types: [version-update:semver-major, version-update:semver-minor]
+      - dependency-name: eslint-config-next
+        update-types: [version-update:semver-major, version-update:semver-minor]
+      - dependency-name: react
+        update-types: [version-update:semver-major, version-update:semver-minor]
+      - dependency-name: react-dom
+        update-types: [version-update:semver-major, version-update:semver-minor]
+      # Vitest は内部の bundler(rolldown)のネイティブ依存が、更新でロックから落ちる問題があるので手動で上げる
+      - dependency-name: vitest
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      actions:
+        patterns: ["*"]
