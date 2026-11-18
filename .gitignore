@@ -46,3 +46,6 @@ next-env.d.ts
 
 # 出典の XML。再配布してよいか分からないので、リポジトリには入れない(npm run bible:fetch で取得する)
 /data/jpn-kougo.osis.xml
+
+# 評価(npm run eval:search)が保存する、書き換えの結果。比較を公平にするための一時ファイル
+/.eval-cache/
