@@ -22,9 +22,15 @@
 - `testament` / `book_order` にも索引は張らない(行数が少ない)
 - `vector` 型は Drizzle の標準の型。`tsvector` は `customType` で型名だけ教え、生成列は `generatedAlwaysAs` で書く。それでも書けないものは、カスタムマイグレーション(生の SQL)で足す
 
-## DB 投入(スクリプトは未着手)
+## DB 投入
 
+実装: [scripts/insert-paragraphs.ts](../scripts/insert-paragraphs.ts)(通信・DB を使わない部分は [scripts/insert-lib.ts](../scripts/insert-lib.ts))。
+
+- 実行: `npm run db:insert`(全段落)/ `npm run db:insert -- --limit 20`(先頭の20件だけ。試しに動かす)/ `npm run db:insert -- --allow-remote`(**ローカル以外**に入れるとき。付けないと、止まる)。実行のたびに、接続先を表示する
+- 途中で失敗しても、もう一度実行すれば、入っていない段落から続きをやる(1回の送信ごとに INSERT する)。**既存の行は更新しない**ので、分かち書きを変えたり、列を足したりしたら、`paragraphs` を空にして入れ直す
+- 1回の送信は、100件まで、かつ本文の合計 10 万字まで
 - `data/bible-paragraphs.json` から1段落ごとに、①本文を作る(`verses` を結合) ②分かち書き(`tokenize`) ③エンベディング(OpenRouter) をして、1行にまとめて INSERT する
+- **エンベディングのモデルは、コードの定数**(`EMBEDDING_MODEL`、[src/lib/openrouter.ts](../src/lib/openrouter.ts))。環境変数にしない。**変えたら、全件を入れ直す**(ベクトルの空間が変わる。次元数が違えば、マイグレーションも要る)。文書側と検索側で、必ず同じ定数を使う
 - 分かち書きとエンベディングは、JSON 作成時ではなく **DB 投入時** にやる(解析器やプレフィックスを変えて試すとき、投入の再実行だけで済むようにするため)
 - ローカル(Docker)と本番(Neon)は、接続先だけ切り替えて同じスクリプトを使う
 - エンベディングは100件ずつなどまとめて API に送る。挿入済みの `id` は飛ばして、途中で失敗しても続きから再開できるようにする(既存行の新しい列は埋まらないので、列を足したら UPDATE か、入れ直しが要る)
