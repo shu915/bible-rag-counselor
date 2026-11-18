@@ -29,6 +29,38 @@ describe("parseOsis(実際の口語訳 XML)", () => {
     expect(new Set(paragraphs.map((p) => p.book_key)).size).toBe(66);
   });
 
+  it("旧約39巻・新約27巻で、書の番号は 1〜66 が1つずつ", () => {
+    const books = new Map(paragraphs.map((p) => [p.book_key, p]));
+    const all = [...books.values()];
+    expect(all.filter((p) => p.testament === "OT")).toHaveLength(39);
+    expect(all.filter((p) => p.testament === "NT")).toHaveLength(27);
+    expect(all.map((p) => p.book_order).sort((a, b) => a - b)).toEqual(
+      Array.from({ length: 66 }, (_, i) => i + 1),
+    );
+  });
+
+  it("書の番号の端・境目・途中: 中間の書の入れ替えにも気づく", () => {
+    const order = (key: string) => paragraphs.find((p) => p.book_key === key)?.book_order;
+    expect(order("Gen")).toBe(1);
+    expect(order("Ps")).toBe(19);
+    expect(order("Prov")).toBe(20);
+    expect(order("Isa")).toBe(23);
+    expect(order("Mal")).toBe(39);
+    expect(order("Matt")).toBe(40);
+    expect(order("Rom")).toBe(45);
+    expect(order("Heb")).toBe(58);
+    expect(order("Rev")).toBe(66);
+  });
+
+  it("書ごとに、旧約・新約と番号が1通りに決まっている", () => {
+    const seen = new Map<string, string>();
+    for (const p of paragraphs) {
+      const v = `${p.testament}/${p.book_order}`;
+      expect(seen.get(p.book_key) ?? v).toBe(v);
+      seen.set(p.book_key, v);
+    }
+  });
+
   it("段落の id は一意", () => {
     expect(new Set(paragraphs.map((p) => p.id)).size).toBe(paragraphs.length);
   });

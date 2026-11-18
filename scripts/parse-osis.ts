@@ -1,5 +1,6 @@
 // OSIS 形式の聖書 XML を、段落ごとの JSON(検索の単位)に変換する。
 // ファイルの読み書きはしない純粋な関数(テストしやすいように、convert-osis.ts から分けてある)。
+import { bookInfo, type Testament } from "./books";
 
 // 出力する1段落分のデータ。検索(ベクトル化・全文検索)の単位は段落。
 // 検索用の本文は verses を結合して DB 投入時に作る(元データは verses の1か所だけ)。
@@ -7,6 +8,8 @@ export interface BibleParagraph {
   id: string; // 例: "Matt.6.25-34"（1節だけなら "Matt.1.1"）。引用の出典としてそのまま確認できる
   book_key: string; // 例: "Matt"
   book_name: string; // 例: "マタイによる福音書"
+  testament: Testament; // "OT"(旧約) / "NT"(新約)。SQL の絞り込み用
+  book_order: number; // 聖書の順の書の番号(創世記 1 〜 黙示録 66)。SQL の並べ替え用
   chapter: number; // 例: 6
   verse_start: number; // 例: 25
   verse_end: number; // 例: 34
@@ -134,10 +137,13 @@ export function parseOsis(xmlContent: string): ParseResult {
     if (seenIds.has(id)) throw new Error(`段落IDが重複しています: ${id}`);
     seenIds.add(id);
 
+    const { testament, order } = bookInfo(first.bookKey);
     paragraphs.push({
       id,
       book_key: first.bookKey,
       book_name: bookNames[first.bookKey] ?? first.bookKey,
+      testament,
+      book_order: order,
       chapter: first.chapter,
       verse_start: first.verse,
       verse_end: last.verseEnd,

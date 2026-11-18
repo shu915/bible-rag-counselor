@@ -22,6 +22,8 @@ describe("parseOsis(小さな XML)", () => {
     expect(paragraphs[0]).toMatchObject({
       book_key: "Matt",
       book_name: "マタイによる福音書",
+      testament: "NT",
+      book_order: 40,
       chapter: 6,
       verse_start: 33,
       verse_end: 34,
@@ -30,6 +32,13 @@ describe("parseOsis(小さな XML)", () => {
       { verse: 33, verse_end: 33, text: "あ" },
       { verse: 34, verse_end: 34, text: "い" },
     ]);
+  });
+
+  it("対応表にない書キーは、黙って通さず止まる", () => {
+    const xml =
+      `<div type="book" osisID="Xyz"><title type="main">不明</title>` +
+      `<chapter osisID="Xyz.1"><p><verse osisID="Xyz.1.1">あ</verse></p></chapter></div>`;
+    expect(() => parseOsis(xml)).toThrow("未知の書キー");
   });
 
   it("ルビ(<w gloss>)を取り除いて、漢字だけにする", () => {
