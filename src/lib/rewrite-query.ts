@@ -45,20 +45,31 @@ export interface RewriteResult {
   usage: { promptTokens: number | undefined; completionTokens: number | undefined };
 }
 
+export interface RewriteOptions {
+  // 相談1件ぶんの全体の締め切り(OpenRouter の呼び出しと、やり直しの待ちを止める)
+  signal?: AbortSignal;
+}
+
 // 相談文を、口語訳の言い回しの検索文(3つ前後)に書き換える
-export async function rewriteQuery(consultation: string): Promise<RewriteResult> {
+export async function rewriteQuery(
+  consultation: string,
+  options: RewriteOptions = {},
+): Promise<RewriteResult> {
   if (consultation.trim() === "") throw new RangeError("相談文が空です");
   if (consultation.length > MAX_QUERY_CHARS) {
     throw new RangeError(`入力が長すぎます(${MAX_QUERY_CHARS}字まで)`);
   }
 
-  const { text, usage } = await chatText({
-    system: SYSTEM_PROMPT,
-    user: consultation,
-    // 推論(reasoning)のトークンも、この中に数えられるので、余裕を持たせる
-    maxTokens: 600,
-    temperature: 0.2,
-    reasoningEffort: "minimal",
-  });
+  const { text, usage } = await chatText(
+    {
+      system: SYSTEM_PROMPT,
+      user: consultation,
+      // 推論(reasoning)のトークンも、この中に数えられるので、余裕を持たせる
+      maxTokens: 600,
+      temperature: 0.2,
+      reasoningEffort: "minimal",
+    },
+    options.signal ? { signal: options.signal } : {},
+  );
   return { queries: parseRewrites(text), usage };
 }

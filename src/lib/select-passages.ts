@@ -13,21 +13,16 @@ export interface Candidate {
 
 const SYSTEM_PROMPT = `あなたは、悩みを抱えた人に、日本語口語訳聖書の箇所を紹介する案内役です。
 ユーザーの悩みと、検索で見つかった候補の聖書の箇所(id と本文の冒頭)が与えられます。
-候補の中から、次の3つの役割に1つずつ、合う箇所を選んでください(この順に出力する)。
-1. 受け止める: 悩みの気持ちや状況を、そのまま言葉にして、寄り添う箇所(嘆き・告白・祈りなど)
-2. 慰める: 悩みの中にいる人に、神の側から、安らぎ・赦し・いたわりを語りかける箇所
-3. 励ます: 悩みに向き合い、一歩を踏み出す勇気や、これからの希望を与える箇所
-(悩みが懺悔のときは、1は罪の自覚、2は赦し、3は立ち直りと読み替える)
+悩みに最もよく寄り添う箇所を、候補の中から3つ選んでください。
 
 選ぶ基準:
-- 3つとも、悩みの核心(気持ち・状況)に関係する箇所にする
+- 悩みの核心(気持ち・状況)に、直接答える、または寄り添う箇所を優先する
 - 言葉や話題が似ているだけの箇所(例: 同じ「怒り」でも、神の怒りを語る箇所)は避ける
-- 嘆きや絶望だけの箇所を、3つとも選ばない。2と3は、必ず、慰めや希望のある箇所にする
-- 同じ箇所を、複数の役割に選ばない
+- 3つは、できるだけ別の角度から選ぶ(同じ内容の重複を避ける)
 - 聖書にない現代の話題(AI、ビットコインなど)は、聖書にある主題に置き換えて考える
-- 役割にぴったりの箇所が候補になければ、最も近いものを選ぶ
+- ぴったりの箇所が候補になければ、最も近いものを選ぶ
 
-出力は、選んだ箇所の id だけを、1、2、3 の役割の順に、1行に1つ、3行で書く。理由・番号・記号は付けない。
+出力は、選んだ箇所の id だけを、合う順に、1行に1つ、3行で書く。理由・番号・記号は付けない。
 id は、候補に書かれているとおりに、一字も変えずに書く。`;
 
 // 本文を、長すぎる場合は冒頭の maxChars 字に切る
@@ -72,6 +67,8 @@ export interface SelectOptions {
   // 候補1件あたりの本文の長さの上限(既定 150字。人の目の比較で、300字と成績は同じで、費用が安い)。
   // 長い段落(詩篇など)で、入力が増えすぎるのを防ぐ
   maxCharsPerCandidate?: number;
+  // 相談1件ぶんの全体の締め切り(OpenRouter の呼び出しと、やり直しの待ちを止める)
+  signal?: AbortSignal;
 }
 
 // picked が count 件に満たなければ、候補を前から順に、重複しないように足して、count 件にする。
@@ -111,14 +108,17 @@ export async function selectPassages(
   if (candidates.length === 0) throw new RangeError("候補がありません");
 
   const count = options.count ?? 3;
-  const { text, usage } = await chatText({
-    system: SYSTEM_PROMPT,
-    user: buildUserMessage(consultation, candidates, options.maxCharsPerCandidate ?? 150),
-    // 推論(reasoning)のトークンも、この中に数えられるので、余裕を持たせる
-    maxTokens: 4000,
-    temperature: 0,
-    reasoningEffort: "minimal",
-  });
+  const { text, usage } = await chatText(
+    {
+      system: SYSTEM_PROMPT,
+      user: buildUserMessage(consultation, candidates, options.maxCharsPerCandidate ?? 150),
+      // 推論(reasoning)のトークンも、この中に数えられるので、余裕を持たせる
+      maxTokens: 4000,
+      temperature: 0,
+      reasoningEffort: "minimal",
+    },
+    options.signal ? { signal: options.signal } : {},
+  );
   return {
     ids: parseSelection(text, new Set(candidates.map((c) => c.id)), count),
     usage,
