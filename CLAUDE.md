@@ -52,7 +52,7 @@
 - 分かち書きとエンベディングは JSON 作成時ではなく **DB 投入時** にやる(解析器やプレフィックスを変えて試すとき、投入の再実行だけで済むようにするため)
 - ローカル(Docker)と本番(Neon)は、接続先だけ切り替えて同じスクリプトを使う
 - エンベディングは100件ずつなどまとめて API に送る。挿入済みの `id` は飛ばして、途中で失敗しても続きから再開できるようにする
-- テーブルの列(案): `id`(PK、`Matt.6.25-34`)、`book_key`、`book_name`、`chapter`、`verse_start`、`verse_end`、`verses`(JSONB)、`content_tokens`、`search_tsv`(GIN)、`embedding vector(1536)`
+- テーブルの列(案): `id`(PK、`Matt.6.25-34`)、`book_key`、`book_name`、`testament`(`OT` / `NT`)、`book_order`(1〜66)、`chapter`、`verse_start`、`verse_end`、`verses`(JSONB)、`content_tokens`、`search_tsv`(GIN)、`embedding vector(1536)`
 - 5,709行なので、ベクトルの索引(HNSW など)は不要で、全件スキャンで足りる。行数が増えたら検討する
 
 ## 費用の試算(2026-11-17 時点、OpenRouter の公開価格。1ドル=150円で換算)
@@ -68,7 +68,8 @@
   - 出力は `data/bible-paragraphs.json` のみ(5,709段落 / 31,088節)。生成物なので `.gitignore` 対象。XML も `.gitignore` 対象で、どちらも git に入れない
   - **検索の単位は段落**。節は1節だけだと文脈が足りないため。引用の表示は節番号付き(例: マタイ6章25-34節)
   - 段落は `<chapter>` / `<p>` / `<lg>` を境界にして節をまとめたもの
-  - フォーマット: `id`(例 `Matt.6.25-34`、1節なら `Matt.1.1`)、`book_key`、`book_name`、`chapter`、`verse_start`、`verse_end`、`verses: [{verse, verse_end, text}]`
+  - フォーマット: `id`(例 `Matt.6.25-34`、1節なら `Matt.1.1`)、`book_key`、`book_name`、`testament`、`book_order`、`chapter`、`verse_start`、`verse_end`、`verses: [{verse, verse_end, text}]`
+  - `testament` と `book_order` は、SQL の絞り込み・並べ替えに使うので持つ。対応表は [scripts/books.ts](scripts/books.ts)(XML は新約が先に並ぶので、出現順は使えない)。表示用の出典ラベル(`reference`)やベクトル化用のテキストは、他の列から作れる・試して変えるものなので JSON に持たない
   - `id` は引用の出典としてそのまま確認できる一意なキー。表示する聖句は LLM に書かせず、必ず `id` で DB から取って表示する
   - 検索用の本文とベクトル化用テキストは、DB 投入時に `verses` を結合して作る(JSON には持たない)
   - 元データには2節が1つにまとまった節(例: `Rom.1.9 Rom.1.10`、16件)があり、`verse` 〜 `verse_end` の範囲で持つ
@@ -78,7 +79,6 @@
 - 埋め込み生成と DB 投入のスクリプトも作る(未着手)
 
 ## 未決事項
-- 書の順序・新旧約の情報を JSON か DB に持たせるか
 - 長すぎる段落(最大約2,700字)を分割するか
 - ベクトル化するテキストに書名・章節のプレフィックスを付けるか(付けない案で始めて、後で比較する)
 - 埋め込みモデルは `text-embedding-3-small` で確定してよいか
@@ -105,10 +105,10 @@
 - `npm run bible:fetch`: 出典の XML を、配布元から `data/` に取得する(チェックサムを確かめる)
 - `npm run bible:convert`: XML から `data/bible-paragraphs.json` を生成する
 - DB(ローカル): `docker compose up -d --wait`(Postgres 17 + pgvector。ホストのポートは **5434**。他プロジェクトが 5432 / 5433 を使っているため)。止めるのは `docker compose down`(データは残る。消すときは `-v`)
-- スキーマ変更は Drizzle のマイグレーションで行う(`npm run db:generate -- --name <説明的な名前>` → `npm run db:migrate`。`db:studio` で中身を見られる)。DB を直接いじらない(`drizzle-kit push` は禁止)。`drizzle/` は生成物で手編集しない(`*_enable_pgvector.sql` の手書きマイグレーションだけ例外)。**マージ済みのマイグレーションは書き換えない**
-- pgvector の `vector` 型や `tsvector` の生成列など、Drizzle で書きにくいものは、カスタムマイグレーション(生の SQL)で足す
+- スキーマ変更は Drizzle のマイグレーションで行う(`npm run db:generate -- --name <説明的な名前>` → `npm run db:migrate`。`db:studio` で中身を見られる)。DB を直接いじらない(`drizzle-kit push` は禁止)。`drizzle/` は生成物で手編集しない(`*_enable_pgvector.sql` の手書きマイグレーションだけ例外)。**本番(Neon)に適用したあとは、マージ済みのマイグレーションを書き換えない**(本番に出すまでは、作り直してよい。消して `db:generate` をやり直し、ローカルの DB は空に戻す)
+- pgvector の `vector` 型は Drizzle の標準の型で書ける。`tsvector` は `customType` で型名だけ教えて、生成列は `generatedAlwaysAs` で書く(`src/db/schema.ts`)。それでも書けないものは、カスタムマイグレーション(生の SQL)で足す
 - `drizzle-kit` は `.env.local` の `DATABASE_URL` を読む(`drizzle.config.ts`)。**未設定ならエラーで止まる**(黙ってローカルに向かわない)。実行のたびに接続先(ホスト・ポート・DB 名)が表示されるので、本番に向けるときは必ず確認する。すでにシェルにある環境変数は `.env.local` より優先される
-- 接続文字列は `.env.example` を参照(`DATABASE_URL=postgres://postgres:postgres@localhost:5434/bible_rag`)。`vector` 拡張は `docker/initdb/01-extensions.sql` が、ボリュームを最初に作るときだけ有効にする
+- 接続文字列は `.env.example` を参照(`DATABASE_URL=postgres://postgres:postgres@localhost:5434/bible_rag`)。`vector` 拡張は、最初のマイグレーション(`drizzle/0000_enable_pgvector.sql`)で有効にする(ローカルも Neon も `db:migrate` だけで同じ状態になる)
 
 ## 検証と評価
 - 実装後は hooks が tsc・lint・test を自動で実行する(`build` と整形のチェックは対象外)

@@ -10,8 +10,6 @@ services:
       - "127.0.0.1:5434:5432"
     volumes:
       - db_data:/var/lib/postgresql/data
-      # 初回(ボリュームを作るとき)だけ実行される。拡張機能の有効化
-      - ./docker/initdb:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d bible_rag"]
       interval: 5s

@@ -1,9 +1,9 @@
 claude-progress.txt
-最終更新: 2026-11-17
+最終更新: 2026-11-18
 新しいセッションは、最初にこのファイルと CLAUDE.md を読む。作業の区切りごとに更新する。経緯は git の履歴、要件と規則は CLAUDE.md。
 
 ## いまの状態
-- PR #1(開発環境の構築)は、マージ済み。リモートは `origin`(github.com/shu915/bible-rag-counselor)。**PR #1 は、XML を含む古いコミットのままマージされた**(XML を外す作り直しが間に合わなかった)。そのため、main の履歴には XML が入っている。これを外す PR #3(`chore/remove-xml-from-git`)が出ている。旧ブランチ `feature/setup-environment` は、作り直した別の履歴になっていて、PR にはもうできない(消してよい)
+- PR #1(開発環境の構築)は、マージ済み。リモートは `origin`(github.com/shu915/bible-rag-counselor)。**PR #1 は、XML を含む古いコミットのままマージされた**(XML を外す作り直しが間に合わなかった)。そのため、main の履歴には XML が入っている。これを外す PR #3 もマージ済み。旧ブランチ `feature/setup-environment` は、作り直した別の履歴になっていて、PR にはもうできない(消してよい)。作業ブランチは `feature/db-schema`
 - main には Ruleset `protect-main` がある(PR 必須、CI の `check` が必須、強制プッシュ禁止)
 - 入っているもの: Next.js + TypeScript + Tailwind の土台 / `CLAUDE.md`(要件・規則・費用の試算)/ `scripts/`(口語訳 XML → 段落 JSON の変換とテスト)/ Docker と Drizzle / `.claude/`(hooks・evaluator)/ CI・Dependabot・Prettier
 - **出典の XML(`data/jpn-kougo.osis.xml`)は git に入れない**(`.gitignore`)。出典は https://github.com/seven1m/open-bibles(配布元の一覧では Public Domain。個別の根拠は未確認)。再配布してよいか分からないため、`npm run bible:fetch` で配布元から取得する(コミットを固定し、SHA-256 を確かめる。CI も同じ)。main の**履歴には、XML が残っている**(`cc269fd` が追加)。履歴から消すには、main の Ruleset を一時的に外して強制プッシュする必要がある(**人が決めて、人が実行する**。配布元の一覧では Public Domain であることと、秘密情報ではないことから、必須とは考えていない。判断は保留)。PR #3 は、これ以降の追跡から外す
@@ -16,13 +16,14 @@ claude-progress.txt
 - 聖書データの変換とフォーマットの確定(検索の単位は段落。`id` は `Matt.6.25-34` の形)
 - 費用の試算(エンベディングは約6円、相談1回は約2〜4.5円)
 - ハーネス(hooks・evaluator・progress)を habit-and-health-tracker から移植して、このプロジェクト用に調整
-- ローカルの DB(Docker compose。`docker-compose.yml`、`docker/initdb/`、`.env.example`)
+- ローカルの DB(Docker compose。`docker-compose.yml`、`.env.example`)。`vector` 拡張は最初のマイグレーション `drizzle/0000_enable_pgvector.sql` で有効にする(`docker/initdb/` は廃止。空の DB に流して `vector` 0.8.7 が入ることを確認済み)
+- JSON に `testament`(OT/NT)と `book_order`(1〜66)を追加(`scripts/books.ts` の対応表。テストあり)
 - Drizzle(`drizzle.config.ts`)と zod の導入
 - 外部レビュー(1回目)への対応: ガードの強化(引用符・ワイルドカード・`..`・Bash 経由の書き換え・危険な git/docker コマンド)、drizzle の接続先の明示、変換スクリプトをどこから実行しても動くように、ページの言語とタイトルを日本語に。ロックファイルは調査して問題なし(102追加・ダウングレード0・削除0)
 
 ## 次
 1. (完了 2026-11-17)Docker の Postgres 17 + pgvector。ポート 5434、DB 名 `bible_rag`。`vector` 0.8.7 が有効なことを確認済み
-2. テーブルを作る(列は CLAUDE.md の「DB 投入」の案)。Drizzle は導入済み(`drizzle.config.ts`、`db:generate` / `db:migrate` / `db:studio`)。`src/db/schema.ts` がまだ無い
+2. (完了 2026-11-18)`paragraphs` テーブル(`src/db/schema.ts`、`drizzle/0001_create_paragraphs.sql`)。`search_tsv` は `content_tokens` から DB が作る生成列(customType + `generatedAlwaysAs`、GIN)。`testament` と `book_order` は CHECK 付き。空の DB で、作成・全文検索・CHECK の拒否を確認済み。まだ行は入っていない
 3. 分かち書きの関数を作る(kuromoji 系。文書側と検索側で共通)
 4. DB 投入スクリプト(分かち書き + エンベディング + INSERT。再開できる形)
 5. 検索(ベクトル + 全文のハイブリッド、RRF で統合)
@@ -43,13 +44,18 @@ claude-progress.txt
 
 ## レビューの宿題
 - **人が反映する(2回目)**: ガードの修正版(`guard-pre.sh`)。`cat<.env.local` などの回避、`cp` / `ln` / `node -e` による保護対象の書き換え、`git restore` / `stash` / `checkout <rev> --` / `push +ref` / `--delete`、`find -exec rm` のブロックと、ワイルドカード判定の誤検知の解消。97件のテストが通ることを確認済み。ガード自身は Claude が編集できないため
-- **人がやる**: GitHub の設定(個人の設定ではなくリポジトリの Settings → Code security)で、Dependabot alerts と Dependabot security updates を有効にする(next / react の CVE を見逃さないため)
+- (判断済み)Dependabot alerts と security updates は、ユーザーの判断でオフ(drizzle-kit 内の古い esbuild の更新が毎回失敗するため)。補う案の CI の `npm audit` も、入れないと決めた(2026-11-18)。再提案しない
 - (反映済み・1回目)`settings.json` の `permissions.deny` と、1回目のガード修正(56件)
 - (対応済み)Vitest を導入した。ロックから落ちていた `@rolldown/binding-*` は、ロックを作り直して解決(手順は CLAUDE.md の「依存を足すとき」)
 - 回数制限、`data_collection: "deny"`、OpenRouter モジュールは未実装。実装できたら、同じ観点でもう一度レビューする
 
+## 外部レビュー(3回目、スキーマ)の宿題
+- **検索の実装のとき**: `to_tsquery` に分かち書きのトークンを渡すと、`'` `&` `:` `|` などが構文エラー・意図しない検索になる。パラメータ化したうえで、トークンをエスケープする。そのためのテストを書く
+- **表示の実装のとき**: `verses`(jsonb)は読み出すと `unknown`。zod で検証する形を決める
+- **本番の初回デプロイの前**: Neon で、マイグレーションを実行するロールが `CREATE EXTENSION vector` を実行できるか確かめる
+- (対応済み)テストに中間の書の番号を追加(詩篇19・箴言20・イザヤ23・ローマ45・ヘブル58)。`chapter >= 1` と `verse_start <= verse_end` の CHECK を追加(本番前なので 0001 を作り直した)
+
 ## 未決(CLAUDE.md の「未決事項」にも書いてある)
-- 書の順序・新旧約の情報を持たせるか
 - 長すぎる段落(最大約2,700字)を分割するか。系図など検索に向かない段落を外すか
 - ベクトル化のテキストに書名・章節のプレフィックスを付けるか
 
