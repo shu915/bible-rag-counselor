@@ -1,12 +1,31 @@
 claude-progress.txt
-最終更新: 2026-11-18
+最終更新: 2026-11-18(夜)
 新しいセッションは、最初にこのファイルと CLAUDE.md を読む。作業の区切りごとに更新する。経緯は git の履歴、要件と規則は CLAUDE.md、詳細な仕様は docs/。
 
-## いまの状態
-- main: PR #5(分かち書き、docs/)までマージ済み。作業ブランチは `feature/db-insert`(**未コミット**: OpenRouter のモジュール、DB 投入スクリプト、docs/rate-limit.md の月 $5 の記録)
-- ローカルの `paragraphs` に、全 5,709 件が入っている(本番の Neon には、まだ入れていない)
-- 動くアプリはまだない(画面は create-next-app の初期状態のまま)
-- 進捗の目安: 土台(データ・DB・分かち書き)まで。DB 投入・検索・生成・画面・回数制限・デプロイが残っている
+## いまの状態(2026-11-18 の終わり)
+- main: PR #6(OpenRouter・DB 投入・検索の部品・評価の道具)までマージ済み。作業ブランチは `feature/generation`(**未コミット。大きな山**)
+- **未コミットの中身**: 選択のプロンプトを評価した版に戻した修正 / 全体の締め切り(`signal`)/ 生成(`generate-counsel.ts`: 解説・結論・引用の範囲と核心の節)/ 書く仕事用のモデル(`OPENROUTER_WRITING_MODEL=anthropic/claude-sonnet-5.5`)/ 検索を1本に(`search-passages.ts`: 書き換え→RRF→15件→選択→重複除去(`passage-overlap.ts`)→補い、除外リスト `excluded-passages.ts`、`--debug` の証拠)/ 危機の検出(`crisis.ts`)/ 引用の範囲(`quote.ts`)/ ターミナルの相談(`npm run counsel`)/ **相談の API(`src/app/api/counsel/route.ts`)と、裸の画面(`counsel-form.tsx`・`notices.tsx`・`page.tsx`)**/ `docs/ui.md`
+- コミットの分け方(案。ユーザーの了承待ち): ①選択の修正と締め切り ②生成と書く仕事用のモデルと引用の部品 ③検索を1本に・危機の検出 ④API・裸の画面・ターミナルの相談・docs
+- テスト 217 件が通る / `npm run check` が通る
+- **API キーは、開発用と本番用を分ける**(開発で $5 を使い切って 403 になった。docs/rate-limit.md)。開発用は `.env.local`
+- 回数制限は、**まだ入っていない。公開しない**。相談窓口の名前と番号は、公開前に人が確認して入れる(いまは仮の表示)
+- 控え(リポジトリの外、`~/Projects/`): `bible-rag-snapshot-2026-11-18.tar`(外した実験のコード)、`bible-rag-backup-2026-11-18.zip`(DB ダンプ・XML・JSON。非公開の置き場へ)、`bible-rag-worktree-2026-11-18-evening.tar`(この日の終わりの、未コミットの作業ツリー)
+
+## デプロイの前・後の確認項目(外部レビューから)
+- 前: **まっさらな DB で `db:migrate` が通る**(2026-11-18 にローカルで確認済み。Neon に当てる前に、もう一度)
+- 前: **Neon のプール用の接続(-pooler)で、起動時の `statement_timeout` が受け付けられるか**(拒否されたら、`query_timeout` だけにして、必要なら、問い合わせごとに `SET LOCAL`)。本番の Neon で、最初の問い合わせが通るか
+- 前: `npm run build`(外部レビューで通ることを確認済み)、Vercel での kuromoji の辞書の場所、`RUN_LIVE_AI=1` のテスト、`evaluator`
+- 前: 相談窓口の名前と番号を、公式の最新情報で入れる(`crisis-message.ts`・`notices.tsx`)
+- **後(最初に)**: `RATE_LIMIT_SALT` が設定されているか(未設定だと、相談のたびに 500。起動時には気づけない)。`VERCEL` 環境変数があるか(ないと、全員が `unknown` の枠になる)
+- 後: 本番用のキー($5 の上限)に差し替えたか。`RATE_LIMIT_PER_IP_PER_DAY`・`RATE_LIMIT_GLOBAL_PER_DAY` の値
+
+## 次にやること(順番の案)
+1. コミットして、PR を作る(上の分け方)
+2. 画面のデザイン: `npm run dev` の裸の画面と `docs/ui.md` を、Claude Design に渡して、デザインしてもらう → CSS に反映
+3. 回数制限(IP のハッシュ・日付・回数。Neon)
+4. 引用の範囲のプロンプト調整(意味が通じる範囲・責めるように読める節を外す)。新しい16問(`docs/ui.md` ではなく、チャットで下書き済みの、今どきの悩み)で、人の目で確認
+5. デプロイ(Neon の `CREATE EXTENSION`、辞書の同梱、Vercel の最大実行時間、本番用キー $5)
+6. 文面の確認(免責・保存の扱い・送信先の保管。事業者の最新の規約と、できれば法律の専門家)
 
 ## 完了
 - 環境構築、ハーネス(hooks・evaluator)、CI・Dependabot・Prettier・Vitest、GitHub の Ruleset `protect-main`

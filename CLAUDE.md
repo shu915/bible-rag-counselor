@@ -23,7 +23,7 @@
 - Next.js (App Router) / TypeScript / Tailwind CSS / zod(外から来るデータの検証)
 - DB: Postgres + pgvector(Drizzle ORM / drizzle-kit、接続は `pg`)。本番は Neon、ローカルは Docker
 - デプロイ: Vercel
-- LLM / 埋め込み: OpenRouter 経由(契約済み)。埋め込みは `openai/text-embedding-3-small`、生成は `google/gemini-4-hydrogen`
+- LLM / 埋め込み: OpenRouter 経由(契約済み)。埋め込みは `openai/text-embedding-3-small`、書き換え・選択(軽い仕事)は `google/gemini-4-hydrogen`(`OPENROUTER_CHAT_MODEL`)、解説と結論(書く仕事)は `anthropic/claude-sonnet-5.5`(`OPENROUTER_WRITING_MODEL`。Gemini は、相談者の気持ちを褒める方に決めつける迎合が出たため。費用はほぼ同じ)
 
 ## AI(OpenRouter)の規則
 
@@ -76,6 +76,8 @@
 | [docs/database.md](docs/database.md) | テーブル定義、DB 投入、マイグレーション、ローカルの Docker |
 | [docs/rate-limit.md](docs/rate-limit.md) | 回数制限の設計 |
 | [docs/cost.md](docs/cost.md) | 費用の試算 |
+| [docs/safety.md](docs/safety.md) | 命の危険への対応・出さない聖句・生成の規則 |
+| [docs/ui.md](docs/ui.md) | 画面の構成と状態(Claude Design に依頼するときの材料) |
 | [docs/harness.md](docs/harness.md) | テスト・CI・依存・リポジトリ運用・hooks の詳細 |
 
 ## このファイルの保ち方

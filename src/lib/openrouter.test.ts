@@ -6,6 +6,7 @@ import {
   OpenRouterError,
   chatText,
   embedTexts,
+  withAiCallCounter,
 } from "./openrouter";
 
 // 本物の OpenRouter は呼ばない(fetch を差し替える)。実際に呼ぶテストは openrouter.live.test.ts
@@ -187,6 +188,32 @@ describe("chatText(リクエスト)", () => {
     fetchMock.mockResolvedValueOnce(jsonResponse(okBody("a")));
     await chatText({ user: "x", maxTokens: 10 });
     expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body)).model).toBe("example/other-model");
+  });
+
+  it("purpose が writing のときだけ、OPENROUTER_WRITING_MODEL を使う。なければ、chat のモデル", async () => {
+    const sentModel = (): string =>
+      JSON.parse(String(fetchMock.mock.calls.at(-1)?.[1]?.body)).model;
+    const okResponse = () => jsonResponse(okBody("a"));
+    vi.stubEnv("OPENROUTER_CHAT_MODEL", "example/light");
+    vi.stubEnv("OPENROUTER_WRITING_MODEL", "example/writer");
+
+    fetchMock.mockImplementation(() => Promise.resolve(okResponse()));
+    await chatText({ user: "x", maxTokens: 10, purpose: "writing" });
+    expect(sentModel()).toBe("example/writer");
+
+    // 軽い仕事(purpose なし)は、WRITING のモデルを使わない
+    await chatText({ user: "x", maxTokens: 10 });
+    expect(sentModel()).toBe("example/light");
+
+    // WRITING が未設定なら、writing でも chat のモデル
+    vi.stubEnv("OPENROUTER_WRITING_MODEL", "");
+    await chatText({ user: "x", maxTokens: 10, purpose: "writing" });
+    expect(sentModel()).toBe("example/light");
+
+    // purpose は、API には送らない
+    expect(JSON.parse(String(fetchMock.mock.calls.at(-1)?.[1]?.body))).not.toHaveProperty(
+      "purpose",
+    );
   });
 
   it("system と temperature と推論の指定がなければ、送らない", async () => {
@@ -372,6 +399,122 @@ describe("相談1件ぶんの全体の締め切り(signal)", () => {
   it("締め切りの合図を渡さなければ、これまでどおり動く", async () => {
     fetchMock.mockResolvedValue(jsonResponse(ok));
     expect((await chatText({ user: "x", maxTokens: 10 })).text).toBe("ok");
+  });
+});
+
+describe("失敗の種類(kind): 回数制限で、AI に届いたかを区別する", () => {
+  const kindOf = async (run: () => Promise<unknown>): Promise<string | undefined> => {
+    const error = await run().catch((e: unknown) => e);
+    return error instanceof OpenRouterError ? error.kind : undefined;
+  };
+
+  it("キーがない → config / 接続できない → network / HTTP エラー → http", async () => {
+    vi.stubEnv("OPENROUTER_API_KEY", "");
+    expect(await kindOf(() => chatText({ user: "x", maxTokens: 10 }))).toBe("config");
+    vi.stubEnv("OPENROUTER_API_KEY", "test-key");
+
+    fetchMock.mockRejectedValue(new TypeError("fetch failed"));
+    expect(await kindOf(() => chatText({ user: "x", maxTokens: 10 }))).toBe("network");
+
+    fetchMock.mockReset();
+    fetchMock.mockResolvedValue(jsonResponse({}, 403));
+    expect(await kindOf(() => chatText({ user: "x", maxTokens: 10 }))).toBe("http");
+  });
+
+  it("全体の締め切りを過ぎた → deadline(届いたか分からない)", async () => {
+    expect(
+      await kindOf(() => chatText({ user: "x", maxTokens: 10 }, { signal: AbortSignal.abort() })),
+    ).toBe("deadline");
+  });
+
+  it("答えは来たが使えない(本文が空・形が違う・JSON でない) → response(AI は答えている)", async () => {
+    fetchMock.mockResolvedValue(
+      jsonResponse({ choices: [{ message: { content: null }, finish_reason: "length" }] }),
+    );
+    expect(await kindOf(() => chatText({ user: "x", maxTokens: 10 }))).toBe("response");
+
+    fetchMock.mockReset();
+    fetchMock.mockImplementation(() => Promise.resolve(new Response("<html>", { status: 200 })));
+    expect(await kindOf(() => chatText({ user: "x", maxTokens: 10 }))).toBe("response");
+  });
+});
+
+describe("1回の待ち時間の超過(timeout)は、接続の失敗(network)と区別する", () => {
+  it("TimeoutError は kind が timeout(届いて、生成中かもしれない)。TypeError は network", async () => {
+    fetchMock.mockRejectedValue(new DOMException("timed out", "TimeoutError"));
+    const timeout = await chatText({ user: "x", maxTokens: 10 }).catch((e: unknown) => e);
+    expect(timeout).toBeInstanceOf(OpenRouterError);
+    expect((timeout as OpenRouterError).kind).toBe("timeout");
+
+    fetchMock.mockReset();
+    fetchMock.mockRejectedValue(new TypeError("fetch failed"));
+    const network = await chatText({ user: "x", maxTokens: 10 }).catch((e: unknown) => e);
+    expect((network as OpenRouterError).kind).toBe("network");
+  });
+
+  it("全体の締め切りで止まったときは、timeout ではなく deadline", async () => {
+    fetchMock.mockRejectedValue(new DOMException("aborted", "AbortError"));
+    const error = await chatText(
+      { user: "x", maxTokens: 10 },
+      { signal: AbortSignal.abort() },
+    ).catch((e: unknown) => e);
+    expect((error as OpenRouterError).kind).toBe("deadline");
+  });
+});
+
+describe("相談1件のあいだの、AI が答えた回数(withAiCallCounter)", () => {
+  const ok = { choices: [{ message: { content: "ok" }, finish_reason: "stop" }] };
+
+  it("成功した呼び出し(JSON が返った)だけを数える。失敗は数えない", async () => {
+    const counter = { successful: 0 };
+    fetchMock.mockImplementation(() => Promise.resolve(jsonResponse(ok)));
+    await withAiCallCounter(counter, async () => {
+      await chatText({ user: "x", maxTokens: 10 });
+      await chatText({ user: "x", maxTokens: 10 });
+    });
+    expect(counter.successful).toBe(2);
+
+    fetchMock.mockReset();
+    fetchMock.mockResolvedValue(jsonResponse({}, 503));
+    await withAiCallCounter(counter, () =>
+      chatText({ user: "x", maxTokens: 10 }).catch(() => undefined),
+    );
+    expect(counter.successful).toBe(2);
+  });
+
+  it("途中まで成功して、最後に失敗しても、成功した分は数えてある", async () => {
+    const counter = { successful: 0 };
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse(ok))
+      .mockResolvedValueOnce(jsonResponse(ok))
+      .mockResolvedValue(jsonResponse({}, 503));
+    await withAiCallCounter(counter, async () => {
+      await chatText({ user: "x", maxTokens: 10 });
+      await chatText({ user: "x", maxTokens: 10 });
+      await chatText({ user: "x", maxTokens: 10 }).catch(() => undefined);
+    });
+    expect(counter.successful).toBe(2);
+  });
+
+  it("別の相談の数と、混ざらない(同時に動いても、それぞれ別に数える)", async () => {
+    fetchMock.mockImplementation(() => Promise.resolve(jsonResponse(ok)));
+    const a = { successful: 0 };
+    const b = { successful: 0 };
+    await Promise.all([
+      withAiCallCounter(a, async () => {
+        await chatText({ user: "x", maxTokens: 10 });
+      }),
+      withAiCallCounter(b, async () => {
+        await chatText({ user: "x", maxTokens: 10 });
+        await chatText({ user: "x", maxTokens: 10 });
+      }),
+    ]);
+    expect([a.successful, b.successful]).toEqual([1, 2]);
+  });
+
+  it("withAiCallCounter の外では、何も起きない", async () => {
+    fetchMock.mockImplementation(() => Promise.resolve(jsonResponse(ok)));
+    await expect(chatText({ user: "x", maxTokens: 10 })).resolves.toBeTruthy();
   });
 });
 

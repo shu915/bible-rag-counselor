@@ -3,9 +3,12 @@ import { sql } from "drizzle-orm";
 import {
   check,
   customType,
+  date,
   index,
+  integer,
   jsonb,
   pgTable,
+  primaryKey,
   smallint,
   text,
   vector,
@@ -48,5 +51,22 @@ export const paragraphs = pgTable(
     check("paragraphs_book_order_check", sql`${t.bookOrder} BETWEEN 1 AND 66`),
     check("paragraphs_chapter_check", sql`${t.chapter} >= 1`),
     check("paragraphs_verse_range_check", sql`${t.verseStart} <= ${t.verseEnd}`),
+  ],
+);
+
+// 回数制限の記録(docs/rate-limit.md)。**IP のハッシュ・日付・回数だけ**。IP は生で持たない。
+// 悩みの内容・AI の返答は、一切入れない(入力と返答を保存しない方針と両立させる)。
+// 日付は、日本時間(Asia/Tokyo)の1日。古い行は、書き込みのたびに消す(数日分だけ持つ)。
+export const rateLimits = pgTable(
+  "rate_limits",
+  {
+    ipHash: text("ip_hash").notNull(), // IP を、秘密の値(RATE_LIMIT_SALT)で HMAC-SHA256 にした 16進数
+    day: date("day").notNull(), // 日本時間の日付
+    count: integer("count").notNull(), // その日に使った回数
+  },
+  (t) => [
+    primaryKey({ columns: [t.ipHash, t.day] }),
+    index("rate_limits_day_idx").on(t.day),
+    check("rate_limits_count_check", sql`${t.count} >= 0`),
   ],
 );

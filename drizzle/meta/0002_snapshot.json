@@ -1,0 +1,201 @@
+{
+  "id": "64e02106-fbb8-4494-a9da-d57eb202c1c5",
+  "prevId": "340df9a0-6913-4f66-87cd-c56fcf397e66",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {
+    "public.paragraphs": {
+      "name": "paragraphs",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "book_key": {
+          "name": "book_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "book_name": {
+          "name": "book_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "testament": {
+          "name": "testament",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "book_order": {
+          "name": "book_order",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "chapter": {
+          "name": "chapter",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "verse_start": {
+          "name": "verse_start",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "verse_end": {
+          "name": "verse_end",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "verses": {
+          "name": "verses",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "content_tokens": {
+          "name": "content_tokens",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "search_tsv": {
+          "name": "search_tsv",
+          "type": "tsvector",
+          "primaryKey": false,
+          "notNull": true,
+          "generated": {
+            "as": "to_tsvector('simple'::regconfig, content_tokens)",
+            "type": "stored"
+          }
+        },
+        "embedding": {
+          "name": "embedding",
+          "type": "vector(1536)",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "paragraphs_search_tsv_idx": {
+          "name": "paragraphs_search_tsv_idx",
+          "columns": [
+            {
+              "expression": "search_tsv",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "gin",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "paragraphs_testament_check": {
+          "name": "paragraphs_testament_check",
+          "value": "\"paragraphs\".\"testament\" IN ('OT', 'NT')"
+        },
+        "paragraphs_book_order_check": {
+          "name": "paragraphs_book_order_check",
+          "value": "\"paragraphs\".\"book_order\" BETWEEN 1 AND 66"
+        },
+        "paragraphs_chapter_check": {
+          "name": "paragraphs_chapter_check",
+          "value": "\"paragraphs\".\"chapter\" >= 1"
+        },
+        "paragraphs_verse_range_check": {
+          "name": "paragraphs_verse_range_check",
+          "value": "\"paragraphs\".\"verse_start\" <= \"paragraphs\".\"verse_end\""
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.rate_limits": {
+      "name": "rate_limits",
+      "schema": "",
+      "columns": {
+        "ip_hash": {
+          "name": "ip_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "day": {
+          "name": "day",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "count": {
+          "name": "count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "rate_limits_day_idx": {
+          "name": "rate_limits_day_idx",
+          "columns": [
+            {
+              "expression": "day",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {
+        "rate_limits_ip_hash_day_pk": {
+          "name": "rate_limits_ip_hash_day_pk",
+          "columns": [
+            "ip_hash",
+            "day"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "rate_limits_count_check": {
+          "name": "rate_limits_count_check",
+          "value": "\"rate_limits\".\"count\" >= 0"
+        }
+      },
+      "isRLSEnabled": false
+    }
+  },
+  "enums": {},
+  "schemas": {},
+  "sequences": {},
+  "roles": {},
+  "policies": {},
+  "views": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}

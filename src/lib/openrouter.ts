@@ -1,7 +1,8 @@
 // OpenRouter を呼ぶ唯一のモジュール。
-// **API キー(OPENROUTER_API_KEY)と、生成のモデル(OPENROUTER_CHAT_MODEL)を読むのは、このファイルだけ**にする
+// **API キー(OPENROUTER_API_KEY)と、生成のモデル(OPENROUTER_CHAT_MODEL・OPENROUTER_WRITING_MODEL)を読むのは、このファイルだけ**にする
 // (ほかから process.env で読まない)。
 // ユーザーの入力は悩み・弱音・懺悔で、とても繊細。入力も返答も、ログにもエラーメッセージにも出さない。
+import { AsyncLocalStorage } from "node:async_hooks";
 import { z } from "zod";
 
 // エンベディングのモデル。**環境変数にしない**(変えると、DB の全件を入れ直す必要がある)。
@@ -19,14 +20,47 @@ const REQUEST_TIMEOUT_MS = 60_000;
 const CHAT_TIMEOUT_MS = 30_000;
 const MAX_ATTEMPTS = 3;
 
+// 失敗の種類。回数制限で、「AI に届かなかった失敗は数えず、答えたあとの失敗は数える」を決めるために、区別する
+// - config: 設定の誤り(キーがない)。AI に届いていない
+// - network: 接続できなかった。AI に届いていない
+// - http: 相手が、エラーの HTTP 状態(402・403・429・5xx など)を返した。答えは、作られていない
+// - deadline: 相談1件ぶんの全体の締め切りを過ぎた。届いたか、答えが作られたか、分からない(安全側で、数える)
+// - timeout: 1回の呼び出しの待ち時間(chat は 30 秒)を過ぎた。**リクエストが届いて、AI が生成している最中でも起きる**ので、
+//   「接続できなかった」ではない。deadline と同じく、分からない(安全側で、数える)
+// - response: 答えは来たが、使えなかった(本文が空、形が違う、JSON でない)。AI は答えている(費用がかかっている)
+export type OpenRouterErrorKind =
+  "config" | "network" | "http" | "deadline" | "timeout" | "response";
+
+// 相談1件のあいだに、AI が答えた(HTTP 200 で、JSON が返った)呼び出しの数を、数える。
+// 回数制限で、「途中まで成功して(費用がかかって)、最後に失敗した」ときに、枠を戻さないために使う
+// (戻すかどうかを、「最後の失敗の種類」だけで決めると、生成が不安定な間、枠を減らさずに、実費をかけて使えてしまう)。
+// 引数で、何層にも渡さずに済むよう、AsyncLocalStorage で、リクエストの中に持たせる
+export interface AiCallCounter {
+  successful: number;
+}
+const counterStorage = new AsyncLocalStorage<AiCallCounter>();
+
+// fn の中で起きる、OpenRouter の呼び出しの成功を、counter に数える
+export function withAiCallCounter<T>(counter: AiCallCounter, fn: () => Promise<T>): Promise<T> {
+  return counterStorage.run(counter, fn);
+}
+
+// 成功した呼び出しを、1つ数える(withAiCallCounter の中でだけ。外では、何もしない)
+export function noteSuccessfulAiCall(): void {
+  const counter = counterStorage.getStore();
+  if (counter) counter.successful += 1;
+}
+
 // 呼び出しの失敗。メッセージには、入力や返答の中身を入れない(HTTP の状態だけ)
 export class OpenRouterError extends Error {
   status: number | undefined;
+  kind: OpenRouterErrorKind;
 
-  constructor(message: string, status?: number) {
+  constructor(message: string, status?: number, kind: OpenRouterErrorKind = "response") {
     super(message);
     this.name = "OpenRouterError";
     this.status = status;
+    this.kind = kind;
   }
 }
 
@@ -49,7 +83,8 @@ export interface RequestOptions {
 
 function getApiKey(): string {
   const key = process.env.OPENROUTER_API_KEY;
-  if (!key) throw new OpenRouterError("OPENROUTER_API_KEY が設定されていません");
+  if (!key)
+    throw new OpenRouterError("OPENROUTER_API_KEY が設定されていません", undefined, "config");
   return key;
 }
 
@@ -66,12 +101,12 @@ const DEADLINE_MESSAGE = "全体の締め切りを過ぎました";
 function sleep(ms: number, signal?: AbortSignal): Promise<void> {
   return new Promise((resolve, reject) => {
     if (signal?.aborted) {
-      reject(new OpenRouterError(DEADLINE_MESSAGE));
+      reject(new OpenRouterError(DEADLINE_MESSAGE, undefined, "deadline"));
       return;
     }
     const onAbort = (): void => {
       clearTimeout(timer);
-      reject(new OpenRouterError(DEADLINE_MESSAGE));
+      reject(new OpenRouterError(DEADLINE_MESSAGE, undefined, "deadline"));
     };
     const timer = setTimeout(() => {
       signal?.removeEventListener("abort", onAbort);
@@ -92,7 +127,7 @@ async function postJson(path: string, body: unknown, options: RequestOptions): P
 
   for (let attempt = 1; ; attempt++) {
     // 全体の締め切りを過ぎていたら、呼ばない
-    if (options.signal?.aborted) throw new OpenRouterError(DEADLINE_MESSAGE);
+    if (options.signal?.aborted) throw new OpenRouterError(DEADLINE_MESSAGE, undefined, "deadline");
 
     let response: Response;
     try {
@@ -105,11 +140,21 @@ async function postJson(path: string, body: unknown, options: RequestOptions): P
           ? AbortSignal.any([AbortSignal.timeout(timeoutMs), options.signal])
           : AbortSignal.timeout(timeoutMs),
       });
-    } catch {
+    } catch (error) {
       // 接続の失敗・タイムアウト。原因のエラーには、リクエストの中身が入りうるので、メッセージに使わない
-      if (options.signal?.aborted) throw new OpenRouterError(DEADLINE_MESSAGE);
+      if (options.signal?.aborted)
+        throw new OpenRouterError(DEADLINE_MESSAGE, undefined, "deadline");
+      // 1回ぶんの待ち時間の超過(AbortSignal.timeout の TimeoutError)。届いていて、生成中かもしれない
+      const timedOut = error instanceof DOMException && error.name === "TimeoutError";
+      if (timedOut && (!retryOnNetworkError || attempt >= MAX_ATTEMPTS)) {
+        throw new OpenRouterError(
+          "OpenRouter の応答が、時間内に返りませんでした",
+          undefined,
+          "timeout",
+        );
+      }
       if (!retryOnNetworkError || attempt >= MAX_ATTEMPTS) {
-        throw new OpenRouterError("OpenRouter に接続できませんでした");
+        throw new OpenRouterError("OpenRouter に接続できませんでした", undefined, "network");
       }
       await sleep(baseDelay * 2 ** (attempt - 1), options.signal);
       continue;
@@ -124,16 +169,19 @@ async function postJson(path: string, body: unknown, options: RequestOptions): P
       throw new OpenRouterError(
         `OpenRouter がエラーを返しました(HTTP ${response.status})`,
         response.status,
+        "http",
       );
     }
 
     // 200 でも、本文が JSON でないことがある(混雑時の HTML など)。中身は、メッセージに入れない
     try {
       const json: unknown = await response.json();
+      noteSuccessfulAiCall();
       return json;
     } catch {
       // 本文を読んでいる最中に、全体の締め切りが来たときは、「JSON ではない」ではなく、締め切りとして伝える
-      if (options.signal?.aborted) throw new OpenRouterError(DEADLINE_MESSAGE);
+      if (options.signal?.aborted)
+        throw new OpenRouterError(DEADLINE_MESSAGE, undefined, "deadline");
       throw new OpenRouterError("OpenRouter の返答が JSON ではありません", response.status);
     }
   }
@@ -232,6 +280,10 @@ export interface ChatRequest {
   temperature?: number;
   // 推論の量。短い書き換えなどは "minimal" にして、費用と時間を抑える
   reasoningEffort?: "none" | "minimal" | "low" | "medium" | "high";
+  // "writing"(解説や結論を書く仕事)のときは、OPENROUTER_WRITING_MODEL があれば、それを使う。
+  // 書き換えや選択のような軽い仕事は、指定しない(OPENROUTER_CHAT_MODEL)。
+  // 書く仕事だけ、別のモデルにできる(迎合しにくいモデルを選ぶ、など)
+  purpose?: "writing";
 }
 
 export interface ChatResult {
@@ -240,12 +292,15 @@ export interface ChatResult {
   usage: { promptTokens: number | undefined; completionTokens: number | undefined };
 }
 
-// 文章を1回生成する。モデルは OPENROUTER_CHAT_MODEL(なければ既定値)
+// 文章を1回生成する。モデルは OPENROUTER_CHAT_MODEL(なければ既定値)。
+// purpose が "writing" のときは、OPENROUTER_WRITING_MODEL があれば、それを優先する
 export async function chatText(
   request: ChatRequest,
   options: RequestOptions = {},
 ): Promise<ChatResult> {
-  const model = process.env.OPENROUTER_CHAT_MODEL || DEFAULT_CHAT_MODEL;
+  const chatModel = process.env.OPENROUTER_CHAT_MODEL || DEFAULT_CHAT_MODEL;
+  const model =
+    request.purpose === "writing" ? process.env.OPENROUTER_WRITING_MODEL || chatModel : chatModel;
   const messages = [
     ...(request.system ? [{ role: "system", content: request.system }] : []),
     { role: "user", content: request.user },

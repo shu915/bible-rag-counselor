@@ -15,6 +15,13 @@
       "when": 1794963578332,
       "tag": "0001_create_paragraphs",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1795000426190,
+      "tag": "0002_create_rate_limits",
+      "breakpoints": true
     }
   ]
 }
