@@ -15,6 +15,7 @@
     "db:studio": "drizzle-kit studio",
     "db:insert": "tsx scripts/insert-paragraphs.ts",
     "eval:search": "tsx scripts/eval-search.ts",
+    "try:generate": "tsx scripts/try-generate.ts",
     "test": "vitest run",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
