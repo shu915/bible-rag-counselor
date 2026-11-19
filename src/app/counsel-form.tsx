@@ -214,7 +214,7 @@ export function CounselForm({ initial }: { initial?: { text: string; view: View 
         }}
       >
         <label htmlFor="consultation" className="text-[15px] leading-[1.7] font-bold">
-          悩み事・愚痴・弱音・懺悔を、書いてください
+          悩み事・愚痴・弱音・懺悔などを、書いてください
         </label>
         <textarea
           id="consultation"
