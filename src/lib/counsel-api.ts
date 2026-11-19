@@ -2,6 +2,7 @@
 // API ルート(src/app/api/counsel/route.ts)から呼ぶ。ルートは、入力の検証と、エラーの変換だけにする。
 // ユーザーの入力は繊細なので、入力も結果も、ログにも例外にも出さない。
 import type { CounselRequest, CounselResponse, PassageView } from "./counsel-schema";
+import { dropUnseenQuotes } from "./commentary-check";
 import { LIFE_LOSS_WORDS, detectCrisis, detectHarmToOthers } from "./crisis";
 import { HARM_CONTEXT_EXCLUDED_PASSAGE_IDS } from "./excluded-passages";
 import { generateCounsel } from "./generate-counsel";
@@ -74,16 +75,22 @@ export async function runCounsel(
       item?.core,
       keywordHit ? { avoid: LIFE_LOSS_WORDS } : {},
     );
+    const verses = passage.verses.map((v) => ({
+      label: v.verse === v.verse_end ? `${v.verse}` : `${v.verse}-${v.verse_end}`,
+      text: v.text,
+      inQuote: v.verse_end >= quote.from && v.verse <= quote.to,
+      core: quote.core !== undefined && v.verse_end >= quote.core.from && v.verse <= quote.core.to,
+    }));
+    // 引用の範囲を、コードが上限で切ったとき、切られた節の言葉を「」で引く文は、落とす(読む人に、見えない節だから)
+    const shown = verses.filter((v) => v.inQuote).map((v) => v.text);
+    const hidden = verses.filter((v) => !v.inQuote).map((v) => v.text);
     return {
       reference: passage.reference,
-      verses: passage.verses.map((v) => ({
-        label: v.verse === v.verse_end ? `${v.verse}` : `${v.verse}-${v.verse_end}`,
-        text: v.text,
-        inQuote: v.verse_end >= quote.from && v.verse <= quote.to,
-        core:
-          quote.core !== undefined && v.verse_end >= quote.core.from && v.verse <= quote.core.to,
-      })),
-      commentary: clip(item?.commentary ?? "", MAX_COMMENTARY_CHARS),
+      verses,
+      commentary: clip(
+        dropUnseenQuotes(item?.commentary ?? "", shown.join(""), hidden.join("")),
+        MAX_COMMENTARY_CHARS,
+      ),
     };
   });
 
