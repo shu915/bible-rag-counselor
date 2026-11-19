@@ -1,26 +1,155 @@
 @import "tailwindcss";
 
+/* 色はここだけで決める(デザインの HANDOFF.md の表)。light-dark(昼, 夜) で、1か所に書く。
+   昼夜は、OS の設定に従う。ボタンで選ぶと、html の data-theme が、color-scheme を上書きする(theme-toggle.tsx) */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  color-scheme: light dark;
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+}
+
+:root {
+  --bg: light-dark(#faf7f0, #12161f);
+  --surface: light-dark(#ffffff, #1a202b);
+  --line: light-dark(#e6e0d2, #2a3140);
+  --ink: light-dark(#1c2433, #ece8de);
+  --muted: light-dark(#4f5868, #a9b0bd);
+  --primary: light-dark(#1f3a5f, #b9985c); /* 昼は深い青、夜はくすませた金 */
+  --primary-hover: light-dark(#172d4a, #c9ab72);
+  --on-primary: light-dark(#ffffff, #12161f);
+  --gold: light-dark(#b08a3e, #a58a55); /* 線・飾りだけ。昼は文字に使わない */
+  --gold-ink: light-dark(#7a5c1e, #bfa069);
+  --highlight: light-dark(#f5ecd4, #2a2618);
+  --mark: light-dark(#f1e3b8, rgba(184, 152, 92, 0.22)); /* 核心の節の帯(案内・エラーの面とは別) */
+  --input: light-dark(#8a816d, #747e91);
+  --disabled-bg: light-dark(#e6e0d2, #2a3140);
+  --disabled-ink: light-dark(#4f5868, #a9b0bd);
+  --glow: light-dark(rgba(176, 138, 62, 0.17), rgba(184, 152, 92, 0.11));
+  --page-glow: light-dark(#fffdf8, #1b2130);
+  --shadow: 0 18px 48px light-dark(rgba(28, 36, 51, 0.07), rgba(0, 0, 0, 0.32));
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-line: var(--line);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-on-primary: var(--on-primary);
+  --color-gold: var(--gold);
+  --color-gold-ink: var(--gold-ink);
+  --color-highlight: var(--highlight);
+  --color-mark: var(--mark);
+  --color-input: var(--input);
+  --color-disabled-bg: var(--disabled-bg);
+  --color-disabled-ink: var(--disabled-ink);
+  --color-glow: var(--glow);
+  --shadow-card: var(--shadow);
+  /* 全画面を明朝にする(デザインの指示)。Shippori Mincho(layout.tsx の localFont)が先頭、なければ OS の明朝 */
+  --font-sans:
+    var(--font-shippori-mincho), "Hiragino Mincho ProN", "Hiragino Mincho Pro", "Yu Mincho",
+    "Noto Serif JP", "MS PMincho", serif;
+  --font-serif:
+    var(--font-shippori-mincho), "Hiragino Mincho ProN", "Hiragino Mincho Pro", "Yu Mincho",
+    "Noto Serif JP", "MS PMincho", serif;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  min-height: 100dvh;
+  /* 上の光は、1回だけ(繰り返すと、ページが長いとき、途中に帯が出る) */
+  background-color: var(--bg);
+  background-image: radial-gradient(
+    ellipse 980px 640px at 50% -120px,
+    var(--page-glow),
+    transparent 72%
+  );
+  background-repeat: no-repeat;
+  color: var(--ink);
+  font-weight: 500;
+  /* 日本語を、文節で折る(単語の途中で折れない)。対応していないブラウザでは、ふつうの折り方 */
+  word-break: auto-phrase;
+}
+
+textarea,
+button {
+  font-family: inherit;
+}
+
+/* フォーカスの色は、ボタンと同じ主色(昼は深い青、夜は金)。入力欄は、もとの枠の色が変わるだけ(線は1本)。
+   outline の transparent は、Windows のハイコントラストモードで枠として出る(none にしない) */
+textarea:focus-visible {
+  border-color: var(--primary);
+  outline: 2px solid transparent;
+}
+
+button:focus-visible,
+summary:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 3px;
+}
+
+summary:hover {
+  color: var(--primary);
+}
+
+/* Tailwind だけでは書けないものだけ、ここに置く */
+@utility fade-bottom {
+  mask-image: linear-gradient(#000 45%, transparent 96%);
+}
+
+@utility core {
+  /* 核心の節: 蛍光ペンのように、文字の下半分に帯を引く(箱にしない)。行をまたいでも、背景が途切れない */
+  background-image: linear-gradient(transparent 52%, var(--mark) 52%);
+  padding-inline: 0.12em;
+  box-decoration-break: clone;
+}
+
+@utility loading-stars {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  height: 40px;
+  color: var(--gold);
+
+  & svg {
+    animation: twinkle 2.4s ease-in-out infinite both;
+  }
+
+  & svg:nth-child(2) {
+    animation-delay: 0.4s;
+  }
+
+  & svg:nth-child(3) {
+    animation-delay: 0.8s;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    & svg {
+      animation: none;
+      opacity: 1;
+      transform: none;
+    }
+  }
+}
+
+@keyframes twinkle {
+  0%,
+  70%,
+  100% {
+    opacity: 0.22;
+    transform: scale(0.72);
+  }
+  30% {
+    opacity: 1;
+    transform: scale(1.12);
+  }
 }
