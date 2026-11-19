@@ -79,6 +79,29 @@ describe("runCounsel", () => {
     ]);
   });
 
+  it("解説が、画面に出ない節(範囲の外)の言葉を「」で引いた文は、落とす。出る節の言葉の文は、残す", async () => {
+    mocks.generateCounsel.mockResolvedValueOnce({
+      preface: null,
+      commentaries: [
+        {
+          id: "Matt.6.19-24",
+          commentary:
+            "「天に宝をたくわえよ」という言葉です。「目は体のあかり」という言葉も、続きます。最後は静かです。",
+          quote: { from: 19, to: 21 },
+        },
+      ],
+      conclusion: "y",
+      crisis: false,
+      usage: {},
+    });
+    const result = await runCounsel(db, { consultation: "疲れた" });
+    if (result.kind !== "ok") throw new Error("ok のはず");
+    // 22-24 節(「目は体のあかり」)は、引用の範囲の外
+    expect(result.passages[0].commentary).toBe(
+      "「天に宝をたくわえよ」という言葉です。最後は静かです。",
+    );
+  });
+
   it("画面の箇所は、AI が決めた読む順(解説の順)に並べる", async () => {
     const other = { ...passage, id: "Ps.23.1-6", reference: "詩篇 23:1-6" };
     mocks.searchPassages.mockResolvedValueOnce({
